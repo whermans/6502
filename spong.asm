@@ -1,89 +1,146 @@
     PROCESSOR   6502
-    INCLUDE     "./vcs.h"
-    ORG         $F000
+    INCLUDE     vcs.h
+    INCLUDE     macro.h
 
-;;
+;; ===================================
+;; Switch between NTSC and PAL version
+;; ===================================
+
+NTSC            =   1
+PAL             =   0
+
+TV_VERSION      =   PAL
+
+;; =========
+;; Constants
+;; =========
+
+ROMTOP          =   $F000
+
+    IF TV_VERSION   =   NTSC
+
+;; NTSC Screen
+
+OVERSCAN_TIME       =   34
+VBLANK_TIME         =   42
+
+SCANLINES           =   192
+TOP_SCANLINES       =   39
+BOTTOM_SCANLINES    =   113
+
+;; NTSC Colors
+
+BLACK               =   $00
+WHITE               =   $0E
+
+    ELSE
+
+;; PAL Screen
+
+OVERSCAN_TIME       =   43
+VBLANK_TIME         =   54
+
+SCANLINES           =   227
+TOP_SCANLINES       =   48
+BOTTOM_SCANLINES    =   139
+
+;; PAL Colors
+
+BLACK               =   $00
+WHITE               =   $0E
+
+    ENDIF
+
+;; =========
 ;; Variables
-;;
+;; =========
 
-;;
-;; Setup
-;;
+;; ====
+;; Code
+;; ====
+
+    SEG         Bank0
+    ORG         ROMTOP
 
 Start
-	sei
-	cld
-	ldx			#$FF
-	txs
-	lda			#0
+    SEI
+    CLD
+    LDX         #$FF
+    TXS
+
+    LDA         #0
 
 ClearMem
-	sta			0,X
-	dex
-	bne			ClearMem
+    STA         0,X
+    DEX
+    BNE         ClearMem
 
-Main
-    LDA         #2          ;; turn off electron beam and return to start position
-    STA         VSYNC       ;; set sync three times
-    STA         WSYNC
-    STA         WSYNC
-    STA         WSYNC
-    LDA         #0      
-    STA         VSYNC       ;; electron beam on again
+    LDA         BLACK
+    STA         COLUBK
 
-    LDA         #43         ;; ((37 scanlines * 76 machine cycles) + 5 timer init cycles + 3 VSYNC cycles + 6 loop cycles - 14 VBLANK cycles)/64
-    STA         TIM64T      ;; set timer
+    LDA         WHITE
+    STA         COLUP0
 
+MainLoop
     LDA         #2
-    STA         VBLANK
+    STA         VSYNC
 
-;;
-;;  Game logic
-;;
+    STA         WSYNC
+    STA         WSYNC
+    STA         WSYNC
 
+    LDA         VBLANK_TIME
+    STA         TIM64T
 
-WaitVblank
+    LDA         #0
+    STA         VSYNC
+
+;; ========================
+;; Game logic during VBLANK
+;; ========================
+
+;; =================
+;; Prepare scan loop
+;; =================
+
+WaitVblankEnd
     LDA         INTIM
-    bne         WaitVblank  ;; idle while timer runs out
+    BNE         WaitVblankEnd
+
+    ldy         SCANLINES
 
     STA         WSYNC
+    STA         HMOVE
 
-    LDY         #191        ;; number of scanlines
+ScanLoop
     STA         WSYNC
-    STA         VBLANK
+    LDA         #2
+    STA         ENAM0
 
-    LDA         #$00
-    STA         WSYNC
-
-
-;;
-;; Display
-;;
-
-Display
-    STA         WSYNC
-
-EndDisplay
-    DEY         
-    BNE         Display     ;; continue drawing lines until the screen is full
+    DEY
+    BNE         ScanLoop
 
     LDA         #2
     STA         WSYNC
     STA         VBLANK
 
-    LDX         #30         ;; 30 lines of overscan
+;; ========
+;; Overscan
+;; ========
 
-Overscan
+    LDX         OVERSCAN_TIME
+OverscanLoop
     STA         WSYNC
     DEX
-    BNE         Overscan
+    BNE         OverscanLoop
 
-    JMP         Main
+    JMP         MainLoop
 
-;;
-;; Reset
-;;
+;; ====
+;; Init
+;; ====
 
-    ORG         $FFFC
+    .ORG        ROMTOP + 4096 - 6,0
+    .word       Start
     .word       Start
     .word       Start
